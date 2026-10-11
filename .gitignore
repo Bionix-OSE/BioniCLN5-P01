@@ -1,3 +1,7 @@
 datasets
 runs/
 __pycache__/
+runs/
+weights/
+*.jpg
+*.pt

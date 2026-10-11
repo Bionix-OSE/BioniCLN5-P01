@@ -13,12 +13,54 @@ By the end of this lab you should be able to:
 6. Compute IoU by hand and interpret the mAP metrics YOLO reports.
 
 You will use the real scripts in this repository (`prepare.py`, `train.py`, `test.py`,
-`visualize.py`, `evaluate_detection_yolo.py`) — this lab is a guided walk through the same
-pipeline described in `CLAUDE.md`, just on a small enough dataset to finish in one session.
+`visualize.py`, `evaluate_detection_yolo.py`) and the small-run scripts in §7 — this lab is a
+guided walk through the same pipeline described in `CLAUDE.md`, just on a small enough dataset
+to finish in one session.
 
 ---
 
 ## 0. Setup
+
+### 0.1 Clone the repository and link shared storage
+
+Replace `X` below with your assigned group number. The repository lives in your group's
+project directory; the workspace symlink gives you a convenient path to open in VS Code.
+The shared datasets are linked once under `~/datasets`, and the repository's `datasets/`
+symlink makes the paths used by the scripts resolve to that shared location.
+
+```bash
+cd
+ln -s /data/projectgX workspace
+ln -s /data/shared/project2026 datasets
+cd workspace
+git clone https://github.com/ntcuong2103/nom-ocr-project.git
+cd nom-ocr-project
+ln -s ~/datasets datasets
+```
+
+If any of these symlinks already exist, keep the existing link rather than replacing it.
+You can verify the two data links with:
+
+```bash
+readlink -f "$HOME/datasets"
+readlink -f datasets
+```
+
+The shared directory `/data/shared/project2026` contains:
+
+| Dataset | Contents |
+|---|---|
+| `nakagawalab/` | 47 page images and YOLO character boxes, a class-to-character mapping for 7,504 classes, and train/validation/test manifests. This is the source dataset used by the lab. |
+| `lab-char-detect/` | A single-class character-detection dataset with train/validation image and label folders plus `data.yaml`; used by the small-run scripts. |
+| `nom-nakagawa-lab/` | A `labels_single/` directory for the Nom-Nakagawa lab data. |
+| `nomnaocr/` | Nom OCR images, line and detection label directories, and an archive of the detection labels. |
+| `tkh-mth2k2/` | The MTH1000, MTH1200, and TKH image collections, with a YAML configuration and path list; a compressed archive is also present. |
+
+The `datasets` links point at shared storage, so generated files written under `datasets/`
+are shared too. Keep temporary outputs and model runs in the project directory unless they
+are meant to be shared.
+
+### 0.2 Python environment
 
 This lab uses [uv](https://docs.astral.sh/uv/) to manage the Python environment. Install it
 if you don't have it yet (`curl -LsSf https://astral.sh/uv/install.sh | sh`), then create a
@@ -52,24 +94,42 @@ uv run python -c "import cv2; from ultralytics import YOLO; print('ok')"
 > anything that depends on `opencv-python` afterwards can bring it back, so repeat the swap
 > if the error returns.
 
+### 0.3 Find and select your GPU
+
+On a GPU node, list the assigned GPU UUIDs:
+
+```bash
+nvidia-smi --query-gpu=uuid,name --format=csv,noheader
+```
+
+If the machine uses MIG, list the GPU and MIG device UUIDs with:
+
+```bash
+nvidia-smi -L
+```
+
+Use the UUID for the GPU or MIG instance assigned to you in `train_small.py` and
+`predict_small.py`, replacing the example `MIG-...` value. Set
+`CUDA_VISIBLE_DEVICES` before importing `ultralytics` (the scripts do this) and keep
+`device=0`: CUDA exposes the selected device as device 0 inside the process. Do not copy
+another user's UUID; use the device assigned to your job/session.
+
 The lab dataset is a small slice of Nom page scans with character-level bounding boxes,
-available on the shared drive:
+available at `~/datasets/nakagawalab` (the shared dataset link created in §0.1):
 
 ```
-/home/shared/nomdatasets/nakagawalab/
+~/datasets/nakagawalab/
 ├── images/            # 47 scanned page images (~1000x771 JPEG)
 ├── labels/             # one YOLO .txt label file per image
 ├── class_mapping.txt   # per-character class id -> Unicode codepoint -> glyph
-└── data.yaml
+├── data.yaml
+├── train.txt
+├── val.txt
+└── test.txt
 ```
 
-Copy it into your own workspace so you can freely edit it:
-
-```bash
-mkdir -p datasets/lab-char-detect
-cp -r /home/shared/nomdatasets/nakagawalab/images datasets/lab-char-detect/images
-cp -r /home/shared/nomdatasets/nakagawalab/labels datasets/lab-char-detect/labels
-```
+Use this shared source path directly when inspecting the original dataset. The small-run
+pipeline uses the prepared single-class dataset under `datasets/lab-char-detect/`.
 
 ---
 
@@ -97,7 +157,7 @@ image path — get the folder names wrong and your labels silently won't load.
 Open one label file and look at it:
 
 ```bash
-head -5 datasets/lab-char-detect/labels/nlvnpf-0023-022.txt
+head -5 ~/datasets/nakagawalab/labels/nlvnpf-0023-022.txt
 ```
 
 ```
@@ -171,8 +231,8 @@ names: ["character"]
 Open `class_mapping.txt`:
 
 ```bash
-head -5 /home/shared/nomdatasets/nakagawalab/class_mapping.txt
-wc -l /home/shared/nomdatasets/nakagawalab/class_mapping.txt
+head -5 ~/datasets/nakagawalab/class_mapping.txt
+wc -l ~/datasets/nakagawalab/class_mapping.txt
 ```
 
 ```
@@ -324,10 +384,11 @@ While it trains, note the printed columns: `box_loss`, `cls_loss`, `dfl_loss` fo
 and `val`, plus the running `mAP50` and `mAP50-95` on the validation set after every epoch —
 you'll interpret these numbers in §6.
 
-Training writes everything under `lab-runs/character-detect/`:
+With the default Ultralytics run directory, training writes everything under
+`runs/detect/lab-runs/character-detect/`:
 
 ```
-lab-runs/character-detect/
+runs/detect/lab-runs/character-detect/
 ├── weights/best.pt        # best checkpoint by validation metric
 ├── weights/last.pt        # checkpoint from the final epoch
 ├── results.png            # loss & metric curves over training
@@ -347,7 +408,7 @@ model is learning to find character boxes at all before you dig into the numbers
 ```python
 from ultralytics import YOLO
 
-model = YOLO("lab-runs/character-detect/weights/best.pt")
+model = YOLO("runs/detect/lab-runs/character-detect/weights/best.pt")
 model.predict(
     "datasets/lab-char-detect/images/val",
     save=True,
@@ -357,8 +418,8 @@ model.predict(
 )
 ```
 
-This writes annotated images to `lab-runs/predict/`. Open a few and compare them side-by-side
-with the ground-truth boxes in `datasets/lab-char-detect/images/val/*.jpg` +
+This writes annotated images to `runs/detect/lab-runs/predict/`. Open a few and compare them
+side-by-side with the ground-truth boxes in `datasets/lab-char-detect/images/val/*.jpg` +
 `datasets/lab-char-detect/labels/val/*.txt`.
 
 ### 5.2 Side-by-side with this repo's `visualize.py`
@@ -379,7 +440,7 @@ from visualize import visualize_image_annotations
 img = "datasets/lab-char-detect/images/val/nlvnpf-0991-01-025.jpg"
 visualize_image_annotations(img, "datasets/lab-char-detect/labels/val/nlvnpf-0991-01-025.txt",
                              "gt.jpg", {0: "character"})
-visualize_image_annotations(img, "lab-runs/predict_labels/labels/nlvnpf-0991-01-025.txt",
+visualize_image_annotations(img, "runs/detect/lab-runs/predict_labels/labels/nlvnpf-0991-01-025.txt",
                              "pred.jpg", {0: "character"})
 ```
 
@@ -483,7 +544,7 @@ output dict:
 ```bash
 uv run python evaluate_detection_yolo.py \
   --gt_dir datasets/lab-char-detect/labels/val \
-  --pred_dir lab-runs/predict_labels/labels \
+  --pred_dir runs/detect/lab-runs/predict_labels/labels \
   --iou_thres 0.5
 ```
 
@@ -501,7 +562,116 @@ matching files by filename stem rather than using YOLO's internal dataloader).
 
 ---
 
-## 7. Wrap-up questions
+## 7. Small-run Python scripts
+
+These are the complete small-run scripts from the repository. Run them from the repository
+root with the environment created in §0.2. The scripts read/write the prepared
+`datasets/lab-char-detect/` tree (linked to shared storage by the setup above).
+
+### 7.1 Convert labels to one class — `convert_to_single_class.py`
+
+This preserves each box and changes only its class id to `0`:
+
+```python
+import glob, os
+from prepare import convert_yolo_single_class
+
+label_dir = "datasets/lab-char-detect/labels"
+output_dir = "datasets/lab-char-detect/labels_single"
+os.makedirs(output_dir, exist_ok=True)
+
+for label_path in glob.glob(f"{label_dir}/*.txt"):
+    output_path = label_path.replace(label_dir, output_dir)
+    convert_yolo_single_class(label_path, output_path)
+```
+
+### 7.2 Split images into train and validation — `split_dataset.py`
+
+```python
+import glob, os, random, shutil
+
+random.seed(0)
+images = sorted(glob.glob("datasets/lab-char-detect/images/*.jpg"))
+random.shuffle(images)
+
+n_val = max(1, int(0.2 * len(images)))
+splits = {"val": images[:n_val], "train": images[n_val:]}
+
+for split, split_images in splits.items():
+    img_out = f"datasets/lab-char-detect/images/{split}"
+    lbl_out = f"datasets/lab-char-detect/labels/{split}"
+    os.makedirs(img_out, exist_ok=True)
+    os.makedirs(lbl_out, exist_ok=True)
+    for img_path in split_images:
+        stem = os.path.splitext(os.path.basename(img_path))[0]
+        shutil.copy(img_path, f"{img_out}/{stem}.jpg")
+        shutil.copy(f"datasets/lab-char-detect/labels_single/{stem}.txt", f"{lbl_out}/{stem}.txt")
+
+print({k: len(v) for k, v in splits.items()})
+```
+
+### 7.3 Train — `train_small.py`
+
+Replace the GPU/MIG UUID with the UUID found in §0.3 before running.
+
+```python
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "MIG-822aef03-bf94-5d72-bd27-dd86770c43e9"  # specify which GPU to use
+
+from ultralytics import YOLO
+
+model = YOLO("yolo11n.pt")       # pretrained COCO checkpoint, used as a starting point
+model.train(
+    data="datasets/lab-char-detect/data.yaml",
+    epochs=20,
+    imgsz=640,
+    single_cls=True,             # collapse to one class even if labels weren't pre-converted
+    batch=8,
+    patience=10,
+    project="lab-runs",
+    name="character-detect",
+    device=0
+)
+```
+
+### 7.4 Visualize an annotated image — `run_visualize.py`
+
+```python
+from visualize import visualize_image_annotations
+visualize_image_annotations(
+    image_path="datasets/lab-char-detect/images/nlvnpf-0023-022.jpg",
+    txt_path="datasets/lab-char-detect/labels/nlvnpf-0023-022.txt",
+    output_path="check.jpg",
+    label_map={0: "character"},
+)
+```
+
+### 7.5 Predict — `predict_small.py`
+
+Replace the GPU/MIG UUID with the UUID found in §0.3 before running.
+
+```python
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "MIG-822aef03-bf94-5d72-bd27-dd86770c43e9"  # specify which GPU to use
+
+from ultralytics import YOLO
+
+model = YOLO("runs/detect/lab-runs/character-detect/weights/best.pt")
+model.predict(
+    "datasets/lab-char-detect/images/train",
+    save=True,
+    conf=0.1,
+    project="lab-runs",
+    name="predict",
+    imgsz=640,
+    device=0
+)
+```
+
+---
+
+## 8. Wrap-up questions
 
 Answer these from your own run, not from the text above:
 
