@@ -2,7 +2,7 @@
 datasets
 runs/
 __pycache__/
-runs/
 weights/
+models/
 *.jpg
 *.pt
