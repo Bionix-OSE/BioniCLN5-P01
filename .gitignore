@@ -1,6 +1,5 @@
 .venv/
 datasets
-runs/
 __pycache__/
 weights/
 models/
