@@ -3,5 +3,4 @@ datasets
 __pycache__/
 weights/
 models/
-*.jpg
-*.pt
+workdir/
