@@ -1,15 +1,13 @@
 from pathlib import Path
 
 from ultralytics import YOLO
-from os import environ
-environ["CUDA_VISIBLE_DEVICES"] = "MIG-822aef03-bf94-5d72-bd27-dd86770c43e9"
 
 # 1. Load the trained YOLO model
-model = YOLO("workdir/week-3-mth/weights/best.pt")
+model = YOLO("workdir/week3-trained-mth/weights/best.pt")
 
 # 2. Define input and output folders
 image_root = Path("datasets") / "nomnaocr" / "images"
-label_root = Path("workdir") / "nomnaocr_labels"
+label_root = Path("workdir") / "week3-nomnaocr_labels_before_clean"
 
 # 3. Prediction settings
 conf_threshold = 0.25

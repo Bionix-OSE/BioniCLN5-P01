@@ -1,8 +1,6 @@
 from pathlib import Path
 from ultralytics import YOLO
-from os import environ
 
-environ["CUDA_VISIBLE_DEVICES"] = "MIG-822aef03-bf94-5d72-bd27-dd86770c43e9"
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================

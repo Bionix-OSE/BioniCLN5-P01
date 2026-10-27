@@ -43,7 +43,7 @@ def convert_chinese_to_yolo_folder(img_dir, label_subdir='label_char', output_su
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Convert Chinese labels to YOLO format')
-    parser.add_argument('--img_dir', type=str, default='datasets/tkh-mth2k2/MTH1000', help='Path to the image directory')
+    parser.add_argument('--img_dir', type=str, default='../datasets/tkh-mth2k2/MTH1000', help='Path to the image directory')
     parser.add_argument('--label_subdir', type=str, default='label_char', help='Subdirectory for labels')
     parser.add_argument('--output_subdir', type=str, default='labels', help='Subdirectory for output labels')
 

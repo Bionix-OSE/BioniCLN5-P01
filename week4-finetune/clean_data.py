@@ -10,7 +10,7 @@ import numpy as np
 # ============================================================
 
 # Images organized by story folders
-image_root = Path("datasets")  / "nomnaocr" / "images"
+image_root = Path("datasets") / "nomnaocr" / "images"
 
 # Character labels predicted by YOLO
 char_label_root = Path("workdir") / "nomnaocr_labels"
